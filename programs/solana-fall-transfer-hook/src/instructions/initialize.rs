@@ -7,6 +7,7 @@ use crate::{ANCHOR_DISCRIMINATOR_SIZE, RateLimit, error::ErrorCode};
 pub struct Initialize<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
+    pub mint: InterfaceAccount<'info, Mint>,
     #[account(
         init,
         payer = payer,
@@ -23,6 +24,14 @@ pub struct Initialize<'info> {
 pub fn handler(ctx: Context<Initialize>) -> Result<()> {
     // For the challenge - Ensure the mint is a token-2022 mint by checking its owner (Pass the mint in the context and check its owner. 
     // Consider saving the mint in the RateLimit struct if needed for future use.
+
+    // Accept only Token-2022 mints. An SPL Token mint cannot have a transfer
+    // hook, so a rate limit tied to one would never be enforced.
+    require_keys_eq!(
+        ctx.accounts.mint.to_account_info().owner.key(),
+        token_2022::ID,
+        crate::error::ErrorCode::InvalidMint
+    );
 
     // Initialize the rate limit account with the authority, mint, max amount, and window start timestamp
     ctx.accounts.rate_limit.set_inner(RateLimit {

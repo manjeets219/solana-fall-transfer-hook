@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{token_2022, token_interface::Mint};
 
-use crate::{ANCHOR_DISCRIMINATOR_SIZE, RateLimit, error::ErrorCode};
+use crate::{ANCHOR_DISCRIMINATOR_SIZE, RateLimit};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {

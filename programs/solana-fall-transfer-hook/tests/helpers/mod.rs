@@ -25,6 +25,11 @@ pub fn setup() -> (LiteSVM, Keypair, Address) {
     let bytes = include_bytes!("../../../../target/deploy/solana_fall_transfer_hook.so");
     svm.add_program(program_id, bytes).unwrap();
 
+    // The second program that performs the CPI transfer. It must be loaded
+    // alongside the hook so tests can call it.
+    let mover_bytes = include_bytes!("../../../../target/deploy/token_mover.so");
+    svm.add_program(token_mover::id(), mover_bytes).unwrap();
+
     let payer = Keypair::new();
     svm.airdrop(&payer.pubkey(), 1_000_000_000).unwrap();
 
@@ -151,6 +156,48 @@ pub fn build_transfer_with_hook_ix(
         program_id,
     ).0;
 
+    ix.accounts.push(AccountMeta::new_readonly(*program_id, false));
+    ix.accounts.push(AccountMeta::new_readonly(extra_account_meta_list, false));
+    ix.accounts.push(AccountMeta::new(rate_limit, false));
+
+    ix
+}
+
+/// Build a `token_mover::transfer_with_hook` instruction that moves tokens via
+/// a CPI into Token-2022, with the hook's accounts passed as remaining accounts.
+pub fn build_transfer_via_program_ix(
+    source_ata: &Pubkey,
+    dest_ata: &Pubkey,
+    mint: &Pubkey,
+    owner: &Pubkey,
+    program_id: &Address,
+    token_mover_id: &Address,
+    amount: u64,
+) -> Instruction {
+    let mut ix = Instruction::new_with_bytes(
+        *token_mover_id,
+        &token_mover::instruction::TransferWithHook { amount }.data(),
+        token_mover::accounts::TransferWithHook {
+            owner: *owner,
+            source_token: *source_ata,
+            mint: *mint,
+            destination_token: *dest_ata,
+            token_program: Token2022::id(),
+        }.to_account_metas(None),
+    );
+
+    let extra_account_meta_list = Pubkey::find_program_address(
+        &[b"extra-account-metas", mint.as_ref()],
+        program_id,
+    ).0;
+
+    let rate_limit = Pubkey::find_program_address(
+        &[b"rate_limit", mint.as_ref(), owner.as_ref()],
+        program_id,
+    ).0;
+
+    // Remaining accounts: hook program first, then the extra account meta list,
+    // then the rate limit. Same three pushes as build_transfer_with_hook_ix.
     ix.accounts.push(AccountMeta::new_readonly(*program_id, false));
     ix.accounts.push(AccountMeta::new_readonly(extra_account_meta_list, false));
     ix.accounts.push(AccountMeta::new(rate_limit, false));
